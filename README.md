@@ -8,7 +8,7 @@ contraction. No $2^N\times 2^N$ matrix is ever built. Every function is written 
 can be compiled with `jit`, batched with `vmap`, looped with `lax.scan` and differentiated with `grad`, on CPU or GPU.
 
 The engine is developed step by step, with every derivation and every check, in the lecture course
-*Quantum Many-Body Simulation in JAX: lectures from scratch* by the same author.
+*Quantum Many-Body Simulation: from a single spin to quantum machine learning* (hands-on lectures in JAX, from scratch) by the same author.
 
 ## Installation
 
@@ -53,7 +53,7 @@ qubit with the Lindblad equation, and the gradient of a variational circuit.
 | metrology | `qfi_pure`, `qfi_mixed`, `spin_moments`, `spin_squeezing`, `oat_evolve` |
 | randomness and complexity | `haar_unitary`, `brickwall`, `single_qubit_cliffords`, `collect_pauli_shadows`, `shadow_estimate_pauli`, `stabilizer_renyi_entropy` |
 | variational circuits | `hardware_efficient_ansatz`, `parameter_shift_grad`, `spsa_grad`, `adam_init`, `adam_update` |
-| tensor networks | `state_to_mps`, `mps_to_state`, `mps_expect_sites`, `mps_entropies`, `xxz_mpo`, `dmrg`, `mps_tebd_evolve`, `mps_rdm2` |
+| tensor networks | `state_to_mps`, `mps_to_state`, `mps_recanonicalise`, `mps_expect_sites`, `mps_entropies`, `xxz_mpo`, `dmrg`, `mps_tebd_evolve`, `mps_rdm2` |
 
 The complete engine is one documented file, `src/smoqjax/engine.py`: every function carries the mathematics it
 implements in its docstring. Conventions (qubit ordering, Pauli matrices, rotations, channels) are in

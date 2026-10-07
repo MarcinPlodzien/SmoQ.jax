@@ -194,3 +194,69 @@ B_t, lam_t = sq.product_mps("0" * 8, 16)
 (B_e, _), out_e = sq.mps_tebd_evolve(B_t, lam_t, h_bonds, 0.05, 20)
 check("MPS-TEBD vs state-vector TEBD (chi = 2^(N/2))", sq.mps_to_state(B_e), psi_sv, 1e-10)
 print("MPS / DMRG / TEBD tests passed")
+
+# ── Regression (tensor-network cross-check 2026-10-07): lam must be the Schmidt values of the returned B ──────
+# Before the fix, dmrg returned the lam recorded during the last right-to-left half sweep, which later local
+# steps had made stale (|d<Z>| = 0.25 after one sweep), and state_to_mps with truncation stored lam before the
+# next cut was truncated.  The references below are plain NumPy on the state vector that B encodes.
+def _np_state(B):
+    return np.asarray(sq.mps_to_state(B)).reshape(-1)
+
+
+def _np_z(st, n):
+    T = st.reshape([2] * n)
+    return np.array([np.sum(np.abs(np.take(T, 0, axis=j)) ** 2 - np.abs(np.take(T, 1, axis=j)) ** 2) for j in range(n)])
+
+
+def _np_schmidt(st, n, c):
+    return np.linalg.svd(st.reshape(2 ** c, -1), compute_uv=False)
+
+
+def _np_S(st, n):
+    out = []
+    for c in range(1, n):
+        p = _np_schmidt(st, n, c) ** 2
+        p = p[p > 1e-300]
+        out.append(-np.sum(p * np.log2(p)))
+    return np.array(out)
+
+
+def _np_bond_energies(st, n, h_bonds):
+    T = st.reshape([2] * n)
+    out = []
+    for j in range(n - 1):
+        M = np.moveaxis(T, (j, j + 1), (0, 1)).reshape(4, -1)
+        out.append(np.real(np.trace(np.asarray(h_bonds[j]) @ (M @ M.conj().T))))
+    return np.array(out)
+
+
+for _n, _chi, _sw in ((8, 16, 1), (10, 4, 1), (10, 4, 8)):        # one sweep at full chi; truncated chi, 1 and 8 sweeps
+    _W = sq.xxz_mpo(_n, 1.0, 1.0, 0.5, hx=0.7)
+    _B, _lam, _ = sq.dmrg(_W, sq.product_mps(("01" * _n)[:_n], _chi)[0], _chi, _sw)
+    _st = _np_state(_B)
+    check(f"dmrg N={_n} chi={_chi} {_sw} sweep(s): <Z_j> from lam vs B", sq.mps_expect_sites(_B, _lam, sq.Z), _np_z(_st, _n), 1e-10)
+    check(f"dmrg N={_n} chi={_chi} {_sw} sweep(s): entropies from lam vs B", sq.mps_entropies(_lam)[1:_n], _np_S(_st, _n), 1e-10)
+    _hb = sq.bond_hamiltonians(_n, 1.0, 1.0, 0.5, hx=0.7)
+    check(f"dmrg N={_n} chi={_chi} {_sw} sweep(s): bond energies from lam vs B", sq.mps_expect_bonds(_B, _lam, _hb),
+          _np_bond_energies(_st, _n, _hb), 1e-10)
+    _B2, _lam2 = sq.mps_recanonicalise(_B)
+    check(f"mps_recanonicalise N={_n} chi={_chi}: state unchanged", _np_state(_B2), _st, 1e-12)
+
+for _chi in (2, 4):                                                    # state_to_mps with truncation
+    _B, _lam, _eps = sq.state_to_mps(psi_r, _chi)
+    assert float(np.max(_eps)) > 1e-3                                   # something was really discarded
+    _st = _np_state(_B)
+    check(f"state_to_mps chi={_chi} (truncated): lam vs Schmidt values of stored state",
+          np.stack([_lam[c, :_chi] for c in range(1, 8)]), np.stack([np.pad(_np_schmidt(_st, 8, c), (0, _chi))[:_chi] for c in range(1, 8)]), 1e-10)
+    check(f"state_to_mps chi={_chi} (truncated): <Z_j> from lam vs stored state", sq.mps_expect_sites(_B, _lam, sq.Z), _np_z(_st, 8), 1e-10)
+    check(f"state_to_mps chi={_chi} (truncated): norm of stored state", np.vdot(_st, _st).real, 1.0, 1e-12)
+
+for _i, _j in ((3, 3), (5, 2)):                                        # misuse of mps_correlator must raise
+    try:
+        sq.mps_correlator(B_r, lam_r, sq.Z, _i, sq.Z, _j)
+    except ValueError:
+        print(f"OK   mps_correlator(i={_i}, j={_j}) raises ValueError")
+    else:
+        print(f"FAIL mps_correlator(i={_i}, j={_j}) returned a number")
+        raise AssertionError("mps_correlator accepted j <= i")
+print("MPS lam-consistency regression tests passed")
