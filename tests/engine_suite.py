@@ -156,6 +156,7 @@ termsv = sq.heisenberg_terms(4, 1, 1, 1, hx=0.5)
 cost = lambda th: sq.energy(termsv, sq.hardware_efficient_ansatz(th, 4, 3))
 th = jax.random.normal(key, (sq.hea_num_params(4, 3),))
 check("jax.grad vs parameter shift", jax.grad(cost)(th), sq.parameter_shift_grad(cost, th), 1e-8)
+check("parameter shift with shift pi/4 (divides by 2 sin s)", jax.grad(cost)(th), sq.parameter_shift_grad(cost, th, shift=jnp.pi / 4), 1e-8)
 st = sq.adam_init(th); gfun = jax.jit(jax.value_and_grad(cost))
 for _ in range(500):
     val, gr = gfun(th); th, st = sq.adam_update(th, gr, st, lr=0.05)

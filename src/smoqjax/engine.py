@@ -1223,12 +1223,15 @@ def hardware_efficient_ansatz(theta, N, layers, entangler=CZ, periodic=False):
 
 
 def parameter_shift_grad(f, theta, shift=jnp.pi / 2):
-    """Parameter-shift rule: for gates exp(-i theta_k P/2) with P^2 = 1 the cost is a sinusoid in theta_k, so
-        d f / d theta_k = [ f(theta + (pi/2) e_k) - f(theta - (pi/2) e_k) ] / 2        (EXACT, not finite differences)
+    """Parameter-shift rule: for gates exp(-i theta_k P/2) with P^2 = 1 the cost is a sinusoid in theta_k,
+        f = a + b cos(theta_k) + c sin(theta_k),   so for any shift s with sin(s) != 0
+        d f / d theta_k = [ f(theta + s e_k) - f(theta - s e_k) ] / (2 sin s)          (EXACT, not finite differences)
+    and the default s = pi/2 gives the familiar [ f(+pi/2) - f(-pi/2) ] / 2.
     -- the gradient a real quantum computer can measure: 2 circuit evaluations per parameter.
     JAX: vmap over the unit vectors e_k evaluates all shifted circuits in one batched call."""
     eye = jnp.eye(theta.size).reshape((theta.size,) + theta.shape)
-    return jax.vmap(lambda e: (f(theta + shift * e) - f(theta - shift * e)) / 2)(eye).reshape(theta.shape)
+    denom = 2 * jnp.sin(shift)
+    return jax.vmap(lambda e: (f(theta + shift * e) - f(theta - shift * e)) / denom)(eye).reshape(theta.shape)
 
 
 def spsa_grad(key, f, theta, c=0.1):
