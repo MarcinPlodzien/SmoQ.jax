@@ -160,9 +160,9 @@ def rz(theta):
 
 
 def rpp(theta, PP):
-    """Two-qubit Pauli rotation  exp(-i theta PP/2)  for PP in {XX, YY, ZZ}.
+    """Two-qubit Pauli rotation  exp(-i theta PP/2)  for any product PP of two Pauli matrices (XX, YY, ZZ, XY, ...).
 
-    Because (P x P)^2 = 1 the same closed form as for single-qubit rotations holds:
+    Because (P x Q)^2 = 1 the same closed form as for single-qubit rotations holds:
         exp(-i theta PP/2) = cos(theta/2) 1_4 - i sin(theta/2) PP.
     These are the native entangling gates of trapped ions (XX) and the building blocks
     of Trotterised spin-chain evolution.
@@ -931,7 +931,11 @@ def lindblad_rhs(rho, terms, jumps):
 
 def lindblad_rk4_step(rho, terms, jumps, dt):
     """Classical 4th-order Runge-Kutta step for d rho/dt = L(rho): local error O(dt^5).
-    Not exactly trace/positivity preserving, but errors are tiny for dt * ||L|| << 1."""
+    TRACE   conserved to round-off: every term of the Lindblad generator is traceless and the step is a linear
+            combination of generator evaluations.  This holds even beyond the stability limit, so a correct trace
+            does NOT certify a healthy run.
+    POSITIVITY   not guaranteed: small negative eigenvalues appear for moderate dt, and the run blows up once
+            dt * ||L|| exceeds the RK4 stability bound."""
     f = lambda r: lindblad_rhs(r, terms, jumps)
     k1 = f(rho)
     k2 = f(rho + 0.5 * dt * k1)
@@ -1256,7 +1260,7 @@ def adam_update(theta, g, state, lr=0.05, b1=0.9, b2=0.999, eps=1e-8):
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # MATRIX PRODUCT STATES: canonical forms, observables, DMRG and TEBD
 # ═══════════════════════════════════════════════════════════════════════════════════════════════════════════════
-# Derived step by step in notebook 18 (Chapters 8 and 9 of the lecture notes) and copied here VERBATIM so that
+# Derived step by step in notebook 18 (Chapter 7) and copied here VERBATIM so that
 # later notebooks can reach beyond the state vector without re-deriving the algorithm.  The storage is the padded,
 # fixed-bond-dimension format: B (N, chi, 2, chi) right-canonical tensors plus lam (N+1, chi) Schmidt values,
 # lam[j] belonging to the cut on the LEFT of site j.
