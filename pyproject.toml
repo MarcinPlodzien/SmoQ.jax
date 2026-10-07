@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smoqjax"
+version = "0.1.0"
+description = "SmoQ.jax: a matrix-free JAX engine for quantum many-body systems"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Marcin Płodzień", email = "mplodzien@gmail.com" }]
+requires-python = ">=3.10"
+dependencies = ["jax>=0.4.30", "numpy", "scipy"]
+keywords = ["quantum", "many-body", "simulation", "jax", "einsum", "quantum circuits", "tensor networks"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Education",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/MarcinPlodzien/SmoQ.jax"
+
+[tool.setuptools.packages.find]
+where = ["src"]
