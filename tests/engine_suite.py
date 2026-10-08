@@ -261,3 +261,90 @@ for _i, _j in ((3, 3), (5, 2)):                                        # misuse 
         print(f"FAIL mps_correlator(i={_i}, j={_j}) returned a number")
         raise AssertionError("mps_correlator accepted j <= i")
 print("MPS lam-consistency regression tests passed")
+
+# ── Regression (2026-10-08): DMRG collapse to the zero vector, and MPO start/end-state convention ─────────────
+# Before the fix, split_two_site kept the arbitrary LAPACK completion of its zero singular values; some of these bond
+# "states" had norm 0, H_eff had a spurious eigenvalue 0 on them, and from the Neel start of the ferromagnetic TFIM
+# (all physical local energies positive) Lanczos landed there at N = 24: E = 0.0, ||psi|| = 1.7e-15, no error.
+def _tfim_free_fermion(n, J=1.0, h=1.0):
+    """Exact ground energy of H = -J sum Z_i Z_{i+1} - h sum X_i, open chain: E0 = -(1/2) sum_k Lambda_k."""
+    A, Bm = 2 * h * np.eye(n), np.zeros((n, n))
+    for i in range(n - 1):
+        A[i, i + 1] = A[i + 1, i] = -J
+        Bm[i, i + 1], Bm[i + 1, i] = -J, J
+    return -0.5 * np.sum(np.linalg.svd(A - Bm, compute_uv=False))
+
+
+def _np_kron_chain(ops):
+    out = np.eye(1)
+    for o in ops:
+        out = np.kron(out, np.asarray(o))
+    return out
+
+
+def _np_dense(n, bonds, sites):
+    """sum_j sum_(c,P,Q) c P_j Q_{j+1} + sum_j sum_(c,P) c P_j, by Kronecker products (big-endian, site 0 first)."""
+    H = np.zeros((2 ** n, 2 ** n), dtype=complex)
+    for j in range(n):
+        for c, P in sites:
+            H += c * _np_kron_chain([P if k == j else np.eye(2) for k in range(n)])
+        if j < n - 1:
+            for c, P, Q in bonds:
+                H += c * _np_kron_chain([P if k == j else Q if k == j + 1 else np.eye(2) for k in range(n)])
+    return H
+
+
+_ff8 = _tfim_free_fermion(8)
+_Wt = sq.xxz_mpo(8, 0.0, 0.0, -1.0, hx=-1.0)
+check("free-fermion TFIM energy vs dense ED (N=8)", _ff8, np.linalg.eigvalsh(np.asarray(sq.mpo_to_dense(_Wt)))[0], 1e-10)
+_W24 = sq.xxz_mpo(24, 0.0, 0.0, -1.0, hx=-1.0)
+_B24, _lam24, _h24 = sq.dmrg(_W24, sq.product_mps("01" * 12, 32)[0], 32, 4)
+check("dmrg TFIM N=24 from Neel start: exact energy", _h24[-1][3], _tfim_free_fermion(24), 1e-8)
+check("dmrg TFIM N=24 from Neel start: <H> of returned B", sq.mpo_expectation(_B24, _W24), _tfim_free_fermion(24), 1e-8)
+check("dmrg TFIM N=24 from Neel start: <psi|psi> = 1", jnp.real(sq.mps_overlap(_B24, _B24)), 1.0, 1e-10)
+
+_W10 = sq.xxz_mpo(10, 1.0, 1.0, 1.0)                                    # all-up is an eigenstate of this S^z-conserving H
+_E10 = np.linalg.eigvalsh(np.asarray(sq.mpo_to_dense(_W10)))[0]
+_B10, _, _h10 = sq.dmrg(_W10, sq.product_mps("0" * 10, 32)[0], 32, 4)
+check("dmrg Heisenberg N=10 from the eigenstate |0..0>: ground energy", _h10[-1][3], _E10, 1e-8)
+check("dmrg Heisenberg N=10 from |0..0>: <psi|psi> = 1", jnp.real(sq.mps_overlap(_B10, _B10)), 1.0, 1e-10)
+
+_Hs = np.diag([3.0, 1.0, -2.0, 0.5])                                    # Lanczos started on an eigenvector (beta_0 = 0)
+_El, _xl = sq.lanczos_lowest(lambda u: jnp.asarray(_Hs, sq.CDTYPE) @ u, jnp.asarray([1.0, 0, 0, 0], sq.CDTYPE), 6)
+check("lanczos_lowest started on an eigenvector: lowest eigenvalue", _El, -2.0, 1e-12)
+check("lanczos_lowest started on an eigenvector: eigenvector", abs(np.asarray(_xl)[2]), 1.0, 1e-12)
+
+try:                                                                    # a zero start must raise, not return a number
+    sq.dmrg(_Wt, jnp.zeros((8, 4, 2, 4), dtype=sq.CDTYPE), 4, 1)
+except ValueError:
+    print("OK   dmrg with a zero start MPS raises ValueError")
+else:
+    raise AssertionError("dmrg accepted a zero start MPS")
+
+# MPO convention: start state = last index D-1, end state = index 0, for any D (mpo_to_dense used row 4 before)
+_n = 6
+_X, _Z, _I = np.asarray(sq.X), np.asarray(sq.Z), np.eye(2)
+_W3 = np.zeros((3, 3, 2, 2), dtype=complex)                             # hand-built TFIM MPO, D = 3: 2 start, 1 Z placed, 0 end
+_W3[2, 2] = _W3[0, 0] = _I
+_W3[2, 1], _W3[1, 0], _W3[2, 0] = -1.0 * _Z, _Z, -0.7 * _X
+_Ws3 = np.stack([_W3] * _n)
+_Ws3[0] = np.zeros_like(_W3); _Ws3[0][2] = _W3[2]
+_Ws3[-1] = np.zeros_like(_W3); _Ws3[-1][:, 0] = _W3[:, 0]
+_Ws3 = jnp.asarray(_Ws3, sq.CDTYPE)
+_H3 = _np_dense(_n, [(-1.0, _Z, _Z)], [(-0.7, _X)])
+check("mpo_to_dense, D=3 hand-built TFIM MPO vs kron", sq.mpo_to_dense(_Ws3), _H3, 1e-12)
+_W5 = np.asarray(sq.xxz_mpo(_n, 1.0, 0.8, 0.5, hx=0.3, hz=-0.2))       # D = 5 -> D = 6: unused state 4, start state moved to 5
+_W6 = np.zeros((_n, 6, 6, 2, 2), dtype=complex)
+_perm = [0, 1, 2, 3, 5]
+_W6[:, np.ix_(_perm, _perm)[0], np.ix_(_perm, _perm)[1]] = _W5
+_W6 = jnp.asarray(_W6, sq.CDTYPE)
+_H5 = _np_dense(_n, [(1.0, _X, _X), (0.8, np.asarray(sq.Y), np.asarray(sq.Y)), (0.5, _Z, _Z)], [(0.3, _X), (-0.2, _Z)])
+check("mpo_to_dense, D=5 xxz_mpo vs kron", sq.mpo_to_dense(jnp.asarray(_W5, sq.CDTYPE)), _H5, 1e-12)
+check("mpo_to_dense, D=6 (padded, start state D-1) vs kron", sq.mpo_to_dense(_W6), _H5, 1e-12)
+_Bp = sq.product_mps("01+-0+", 8)[0]
+check("mpo_expectation, D=6 vs D=5", sq.mpo_expectation(_Bp, _W6), sq.mpo_expectation(_Bp, jnp.asarray(_W5, sq.CDTYPE)), 1e-12)
+_, _, _h6 = sq.dmrg(_W6, sq.product_mps("01" * 3, 8)[0], 8, 3)
+_, _, _h3 = sq.dmrg(_Ws3, sq.product_mps("01" * 3, 8)[0], 8, 3)
+check("dmrg with the D=6 MPO: ground energy", _h6[-1][3], np.linalg.eigvalsh(_H5)[0], 1e-8)
+check("dmrg with the D=3 MPO: ground energy", _h3[-1][3], np.linalg.eigvalsh(_H3)[0], 1e-8)
+print("DMRG-collapse and MPO-convention regression tests passed")
