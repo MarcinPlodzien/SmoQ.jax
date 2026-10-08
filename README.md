@@ -8,7 +8,7 @@ contraction. No $2^N\times 2^N$ matrix is ever built. Every function is written 
 can be compiled with `jit`, batched with `vmap`, looped with `lax.scan` and differentiated with `grad`, on CPU or GPU.
 
 The engine is developed step by step, with every derivation and every check, in the lecture course
-*Quantum Many-Body Simulation: from a single spin to quantum machine learning* (hands-on lectures in JAX, from scratch) by the same author.
+[*Quantum Many-Body Simulation: from a single spin to quantum machine learning*](https://marcinplodzien.github.io/quantum-many-body-simulation/) (hands-on lectures in JAX, from scratch) by the same author.
 
 ## Installation
 
