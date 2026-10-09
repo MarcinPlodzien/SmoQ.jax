@@ -48,8 +48,18 @@ K = sq.kraus_amplitude_damping(0.3)
 ref = sum(kron_embed(k, [2], N) @ R @ kron_embed(k, [2], N).conj().T for k in np.asarray(K))
 check("Kraus channel on DM", sq.dm_matrix(sq.apply_kraus_dm(rho, K, [2])), ref)
 for nm, Kf in [("depol", sq.kraus_depolarizing(0.2)), ("deph", sq.kraus_dephasing(0.2)), ("AD", K),
-               ("jump", sq.kraus_from_jump(sq.SM, 0.05))]:
+               ("jump", sq.kraus_from_jump(sq.SP, 0.05))]:                   # decay L = |0><1| = SP
     check(f"Kraus completeness {nm}", jnp.einsum("mab,mac->bc", jnp.conj(Kf), Kf), np.eye(2))
+
+# spin convention sigma^+- = (X +- iY)/2: SM = |1><0| lowers spin up |0> to spin down |1>; decay |1> -> |0> is SP = |0><1|
+e0, e1 = np.array([1, 0], complex), np.array([0, 1], complex)
+check("SM = (X - iY)/2, SP = (X + iY)/2", np.stack([sq.SM, sq.SP]), np.stack([(sq.X - 1j * sq.Y) / 2, (sq.X + 1j * sq.Y) / 2]))
+check("SM|0> = |1>, SP|1> = |0>", np.stack([sq.SM @ e0, sq.SP @ e1]), np.stack([e1, e0]))
+check("amplitude damping g=1 takes |1><1| to |0><0|", sq.dm_matrix(sq.apply_kraus_dm(sq.to_dm(sq.product_state("1")), sq.kraus_amplitude_damping(1.0), [0])), np.outer(e0, e0))
+r_dec = sq.to_dm(sq.product_state("1"))
+for _ in range(2000):                                                  # gamma t = 20 with decay L = SP
+    r_dec = sq.lindblad_rk4_step(r_dec, [((0,), 0.0 * sq.Z)], [((0,), sq.SP, 1.0)], 0.01)
+check("Lindblad decay L = SP relaxes |1> to |0>", sq.dm_matrix(r_dec), np.outer(e0, e0), 1e-8)
 
 # rdm / partial trace
 Rt = R.reshape((2,) * (2 * N))
@@ -86,13 +96,13 @@ check("Lanczos ground energy", E0, w[0], 1e-8)
 Nn = 3
 terms3 = sq.heisenberg_terms(Nn, 1.0, 1.0, 1.0, hx=0.5)
 g, dt, steps = 0.2, 0.01, 100
-jumps = [((q,), sq.SM, g) for q in range(Nn)]
+jumps = [((q,), sq.SP, g) for q in range(Nn)]                          # decay |1> -> |0> on every site
 rho0 = sq.to_dm(sq.product_state("1+0"))
 r_rk = rho0
 for _ in range(steps):
     r_rk = sq.lindblad_rk4_step(r_rk, terms3, jumps, dt)
 gates = sq.tebd_gates(terms3, dt, 2)
-jk = [((q,), sq.kraus_from_jump(sq.SM, g * dt)) for q in range(Nn)]
+jk = [((q,), sq.kraus_from_jump(sq.SP, g * dt)) for q in range(Nn)]
 r_tr = rho0
 for _ in range(steps):
     r_tr = sq.lindblad_trotter_step_dm(r_tr, gates, jk)

@@ -13,7 +13,7 @@ $Z = \begin{pmatrix}1&0\\0&-1\end{pmatrix}$. Spin operators are $S^a = \sigma^a/
 `heisenberg_terms` use Pauli matrices, $H = \sum_{\langle ij\rangle} (J_{xx} X_iX_j + J_{yy} Y_iY_j + J_{zz} Z_iZ_j)
 + \sum_i (h_x X_i + h_y Y_i + h_z Z_i)$.
 
-**Ladder operators.** `SM` $=\sigma^- = |0\rangle\langle 1|$, `SP` $=\sigma^+ = |1\rangle\langle 0|$.
+**Ladder operators.** Spin convention, following from the Pauli matrices: $\sigma^\pm=(X\pm iY)/2$, so `SM` $=\sigma^- = |1\rangle\langle 0|$ (lowers spin up $|0\rangle$ to spin down $|1\rangle$) and `SP` $=\sigma^+ = |0\rangle\langle 1|$. Relaxation of $|1\rangle$ to $|0\rangle$ (amplitude damping) has the jump operator $|0\rangle\langle 1|$ = `SP`; quantum-optics texts call this operator $\sigma^-$ because they take $\sigma^z=|e\rangle\langle e|-|g\rangle\langle g|$, which is $-Z$ when the ground state is $|0\rangle$.
 
 **Rotations.** $R_P(\theta) = \exp(-i\theta P/2)$ for $P \in \{X, Y, Z\}$, and $\exp(-i\theta PP/2)$ for the
 two-qubit rotations `rxx`, `ryy`, `rzz`.

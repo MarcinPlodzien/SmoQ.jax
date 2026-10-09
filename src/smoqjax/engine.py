@@ -121,8 +121,10 @@ S = jnp.array([[1, 0], [0, 1j]], dtype=CDTYPE)                      # phase gate
 SDG = S.conj().T
 T = jnp.array([[1, 0], [0, jnp.exp(1j * jnp.pi / 4)]], dtype=CDTYPE)  # pi/8 gate, T^2 = S (non-Clifford!)
 TDG = T.conj().T
-SM = jnp.array([[0, 1], [0, 0]], dtype=CDTYPE)  # sigma^- = |0><1| : lowers |1> -> |0>
-SP = SM.conj().T                                # sigma^+ = |1><0|
+# Spin convention: sigma^+- = (X +- iY)/2.  sigma^- lowers spin up |0> to spin down |1>; sigma^+ raises it back.
+# Decay of |1> to |0> (amplitude damping, T1) therefore has the jump operator |0><1| = SP.
+SP = jnp.array([[0, 1], [0, 0]], dtype=CDTYPE)  # sigma^+ = |0><1| = (X + iY)/2 : spin raising |1> -> |0>, the decay jump operator
+SM = SP.conj().T                                # sigma^- = |1><0| = (X - iY)/2 : spin lowering |0> -> |1>
 P0 = jnp.array([[1, 0], [0, 0]], dtype=CDTYPE)  # projector |0><0|
 P1 = jnp.array([[0, 0], [0, 1]], dtype=CDTYPE)  # projector |1><1|
 PAULI = {"I": I2, "X": X, "Y": Y, "Z": Z}
@@ -653,7 +655,7 @@ def kraus_phase_flip(p):
 def kraus_amplitude_damping(g):
     """Amplitude damping (T1 decay |1> -> |0> with probability g):
         K0 = [[1,0],[0,sqrt(1-g)]]   (no decay -- but the amplitude of |1> shrinks: 'no click' is information)
-        K1 = [[0,sqrt(g)],[0,0]]     (decay event = sqrt(g) sigma^-)."""
+        K1 = [[0,sqrt(g)],[0,0]]     (decay event = sqrt(g) |0><1| = sqrt(g) sigma^+, engine SP)."""
     K0 = jnp.array([[1, 0], [0, jnp.sqrt(1 - g)]], dtype=CDTYPE)
     K1 = jnp.array([[0, jnp.sqrt(g)], [0, 0]], dtype=CDTYPE)
     return jnp.stack([K0, K1])
@@ -665,7 +667,7 @@ def kraus_from_jump(L, gamma_dt):
         K0 = sqrt(1 - gamma dt L^dag L)            'no jump'  (~ exp(-gamma dt L^dag L / 2))
     Completeness K0^dag K0 + K1^dag K1 = 1 holds EXACTLY whenever gamma dt ||L^dag L|| <= 1, so that
     1 - gamma dt L^dag L is positive semidefinite and its square root exists; the map is then trace preserving.
-    For larger steps the negative eigenvalues are clipped by _sqrtm_psd and completeness FAILS (L = sigma^-,
+    For larger steps the negative eigenvalues are clipped by _sqrtm_psd and completeness FAILS (decay L = |0><1| = SP,
     gamma dt = 1.5: error 0.5).  It reproduces the Lindblad dissipator up to O(dt^2)."""
     L = jnp.asarray(L, dtype=CDTYPE)
     K0 = _sqrtm_psd(jnp.eye(L.shape[0], dtype=CDTYPE) - gamma_dt * (L.conj().T @ L))
